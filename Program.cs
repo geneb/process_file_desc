@@ -94,9 +94,9 @@ namespace process_file_desc {
                 }
                 DirectoryInfo workingDir = new DirectoryInfo(workingPath);
 
-                
+
                 descReader = new StreamReader(descFilename);
-                
+
                 EmitHeader(shortDescription, longDescription);
 
                 // If the file description field is 0 or blank when read from the description file,
@@ -150,50 +150,52 @@ namespace process_file_desc {
                     //                            Some files.bbs and other file listings may have
                     //                            "non descriptive" text that leads with a space,
                     //                            and is typically something we need to ignore.
-                    if (workLine.Trim() != "" && !workLine.Substring(0, 1).Equals(" ")) {
-                        fileName = workLine.Trim().Substring(filePos, 12).ToUpper();
-                        if (workingPath.Trim() == "") {
-                            checkName = fileName;
+                    if (workLine.Trim().Equals("") || workLine.Substring(0, 1).Equals(" "))
+                        continue;
+                    
+                    fileName = workLine.Trim().Substring(filePos, 12).ToUpper();
+                    if (workingPath.Trim() == "") {
+                        checkName = fileName;
+                    } else {
+                        checkName = workingPath + "\\" + fileName;
+                    }
+
+                    if (!File.Exists(checkName))
+                        continue;
+
+
+                    if (fileName.Equals("")) {
+                        if (!holdFile.Equals("")) {
+                            // chances are pretty high that this is part of an extended or multi-line
+                            // description for a file we just added.
+                            processedFileList[holdFile].FileDesc += workLine.Trim().Substring(descPos);
+                        }
+                    } else {
+                        testFile = new FileInfo(checkName);
+                        fileSize = testFile.Length.ToString("N0");
+                        totalSize += testFile.Length;
+                        if (datePos == -1) {
+                            fileDate = File.GetLastWriteTime(checkName).ToShortDateString();
                         } else {
-                            checkName = workingPath + "\\" + fileName;
+                            fileDate = TextToDate(workLine.Substring(datePos, 8), sepChar).ToShortDateString();
                         }
 
-                        if (File.Exists(checkName) || fileName.Equals("")) {
-                            if (fileName.Equals("")) {
-                                if (!holdFile.Equals("")) {
-                                    // chances are pretty high that this is part of an extended or multi-line
-                                    // description for a file we just added.
-                                    processedFileList[holdFile].FileDesc += workLine.Trim().Substring(descPos);
-                                }
-                            } else {
-                                testFile = new FileInfo(checkName);
-                                fileSize = testFile.Length.ToString("N0");
-                                totalSize += testFile.Length;
-                                if (datePos == -1) {
-                                    fileDate = File.GetLastWriteTime(checkName).ToShortDateString();
-                                } else {
-                                    fileDate = TextToDate(workLine.Substring(datePos, 8), sepChar).ToShortDateString();
-                                }
+                        if (workLine.Length >= descPos) {
+                            fileDesc = workLine.Trim().Substring(descPos);
+                        } else {
+                            fileDesc = "NO DESCRIPTION FOUND";
+                        }
 
-                                if (workLine.Length >= descPos) {
-                                    fileDesc = workLine.Trim().Substring(descPos);
-                                } else {
-                                    fileDesc = "NO DESCRIPTION FOUND";
-                                }
+                        workFile = new classFileEntry(fileName, fileSize, fileDate, fileDesc);
 
-                                workFile = new classFileEntry(fileName, fileSize, fileDate, fileDesc);
-
-                                if (!processedFileList.ContainsKey(fileName)) {
-                                    processedFileList.Add(fileName, workFile);
-                                } else {
-                                    pError($"{fileName} was found more than once in the working directory.");
-                                    pError($"Please edit the {descFilename} file to remove the duplicate.");
-                                }
-                            }
-
-                            holdFile = fileName;
+                        if (!processedFileList.ContainsKey(fileName)) {
+                            processedFileList.Add(fileName, workFile);
+                        } else {
+                            pError($"{fileName} was found more than once in the working directory.");
+                            pError($"Please edit the {descFilename} file to remove the duplicate.");
                         }
                     }
+                    holdFile = fileName;
                 }
 
                 if (processedFileList.Count > 0) {
@@ -205,37 +207,38 @@ namespace process_file_desc {
                         }
 
                         EmitDetail(workFile);
-
                     }
-
                 }
                 EmitFooter(processedFileList.Count, totalSize);
             }
 
             static void EmitHeader(string shortDescription, string longDescription) {
                 // this is the "standard" support files listing format.
-                Console.WriteLine("<HTML>");
-                Console.WriteLine($"<TITLE> BBS Documentary Software: {shortDescription} </TITLE>");
+                Console.WriteLine("<html>");
+                Console.WriteLine($"<title> BBS Documentary Software: {shortDescription} </title>");
                 Console.WriteLine(
-                    "<BODY BGCOLOR=\"#FFFFFF\" TEXT=\"#000000\" LINK=\"#444444\" ALINK=\"#999999\" VLINK=\"#999999\">");
-                Console.WriteLine("<TABLE WIDTH=100%>");
-                Console.WriteLine($"<TD WIDTH=100% BGCOLOR=#000000><FONT COLOR=#FFFFFF SIZE=+2><B>{longDescription} Support Files</B><BR></FONT></TD>");
-                Console.WriteLine("</TABLE>");
-                Console.WriteLine("<TABLE WIDTH=100%>");
-                Console.WriteLine("<TD BGCOLOR=#000000><FONT COLOR=#FFFFFF><B>Filename</B><BR></FONT></TD>");
-                Console.WriteLine("<TD BGCOLOR=#000000><FONT COLOR=#FFFFFF><B>Size</B><BR></FONT></TD>");
-                Console.WriteLine("<TD BGCOLOR=#000000><FONT COLOR=#FFFFFF><B>Date</B><BR></FONT></TD>");
-                Console.WriteLine("<TD BGCOLOR=#000000><FONT COLOR=#FFFFFF><B>Description of the File</B><BR></TD></TR>");
-                //Console.WriteLine("<tab indent=60 id=T><br>");
-
+                    "<body bgcolor=\"#FFFFFF\" text=\"#000000\" link=\"#444444\" alink=\"#999999\" vlink=\"#999999\">");
+                Console.WriteLine("<table width=100%>");
+                Console.WriteLine($"  <td width=100% bgcolor=#000000><font color=#FFFFFF SIZE=+2><b>{longDescription} Support Files</b></font></td>");
+                Console.WriteLine("</table>");
+                Console.WriteLine("<table width=100%>");
+                Console.WriteLine("  <tr>");
+                Console.WriteLine("    <td bgcolor=#000000><font color=#FFFFFF><b>Filename</b></font></td>");
+                Console.WriteLine("    <td bgcolor=#000000><font color=#FFFFFF><b>Size</b></font></td>");
+                Console.WriteLine("    <td bgcolor=#000000><font color=#FFFFFF><b>Date</b></font></td>");
+                Console.WriteLine("    <td bgcolor=#000000><font color=#FFFFFF><b>Description of the File</b></td>");
+                Console.WriteLine("  </tr>");
             }
 
             static void EmitDetail(classFileEntry workFile) {
                 Console.WriteLine(
-                    $"<TR VALIGN=TOP><TD ALIGN=TOP><A HREF=\"{workFile.FileName}\">{workFile.FileName}</A><TD>{workFile.FileSize}</td><TD>{workFile.FileDate}</td><td>{workFile.FileDesc}</td></tr>");
+                    $"  <tr valign=top><td align=top><a href=\"{workFile.FileName}\">{workFile.FileName}</A><td align=right>{workFile.FileSize}</td><td>{workFile.FileDate}</td><td>{workFile.FileDesc}</td></tr>");
             }
             static void EmitFooter(int fileCount, long totalSize) {
-                Console.WriteLine($"</TABLE><P><TABLE WIDTH=100%><TR><TD ALIGN=RIGHT><SMALL> There are {fileCount} files for a total of {totalSize.ToString("N0")} bytes.</SMALL></TABLE>");
+                Console.WriteLine("</table><p>");
+                Console.WriteLine($"<table width=100%><tr><td align=right><small>There are {fileCount} files for a total of {totalSize.ToString("N0")} bytes.</small></td></tr></table>");
+                Console.WriteLine("</body>");
+                Console.WriteLine("</html>");
             }
         }
     }
