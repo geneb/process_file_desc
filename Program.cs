@@ -38,21 +38,12 @@ namespace process_file_desc {
             List<string> skipList = new List<string>();
             if (args.Length != 4) {
                 Console.WriteLine("Usage:");
-                Console.WriteLine("process_file_desc <desc file> <short description> <long description> <field list> > output.html");
+                Console.WriteLine("process_file_desc <desc file> > output.html");
                 Console.WriteLine("");
                 Console.WriteLine("Example:");
-                Console.WriteLine("process_file_desc FILES.BBS \"PC Board\" \"PC Board BBS Software\" 1,13,24,34,- > index.html");
+                Console.WriteLine("process_file_desc FILES.BBS > index.html");
                 Console.WriteLine("");
-                Console.WriteLine(
-                    "In the above example, the field list dictates that the filename will start in column 1,");
-                Console.WriteLine(
-                    "the file size in column 13, file date in column 24, and the description in column 34.");
-                Console.WriteLine("Finally, the date separation character '-' is listed last.");
-                Console.WriteLine("");
-                Console.WriteLine("If a column isn't present in the description file, use '0' to indicate the starting");
-                Console.WriteLine("position. For example, if the file is missing the file date, you would pass ");
-                Console.WriteLine("1,13,0,34,/ on the command line (assuming the description starts at 34)");
-
+                
                 Console.WriteLine("");
                 Console.WriteLine("Note that if the directory file you specify is not in your current working");
                 Console.WriteLine("directory, the files it describes must be in the same location as the description");
@@ -62,29 +53,29 @@ namespace process_file_desc {
                 Console.WriteLine("");
             } else {
                 string descFilename = args[0];
-                string shortDescription = args[1];
-                string longDescription = args[2];
-                string[] fieldLocs = args[3].Split(",");
-                if (fieldLocs.Length != 5) {
-                    pError($"Invalid number of field parameters, {args[3]}.");
-                    pError($"Needed 5, found {fieldLocs.Length}.");
-                    return;
-                }
+                //string shortDescription = args[1];
+                //string longDescription = args[2];
+                //string[] fieldLocs = args[3].Split(",");
+                //if (fieldLocs.Length != 5) {
+                //    pError($"Invalid number of field parameters, {args[3]}.");
+                //    pError($"Needed 5, found {fieldLocs.Length}.");
+                //    return;
+                //}
                 // don't want to count what we're reading or what we're creating.
                 skipList.Add("INDEX.HTML"); // presumably this is what is being output to.
                 skipList.Add(Path.GetFileName(descFilename).ToUpper());
 
 
-                ProcessFileArea(descFilename, shortDescription, longDescription, fieldLocs);
+                ProcessFileArea(descFilename); //, shortDescription, longDescription, fieldLocs);
 
             }
 
-            void ProcessFileArea(string descFilename, string shortDescription, string longDescription,
-                string[] fieldLocs) {
+            void ProcessFileArea(string descFilename) {
                 StreamReader descReader;
                 classFileEntry workFile;
-
-
+                string shortDescription;
+                string longDescription;
+                string[] fieldLocs;
                 FileInfo testFile;
 
                 Dictionary<String, classFileEntry> processedFileList = new Dictionary<string, classFileEntry>();
@@ -97,44 +88,17 @@ namespace process_file_desc {
 
                 descReader = new StreamReader(descFilename);
 
-                EmitHeader(shortDescription, longDescription);
+                
 
                 // If the file description field is 0 or blank when read from the description file,
                 // we should automatically try to find a file_id.diz or descript.ion file and use that.
                 // 
 
-                int filePos;
-                int sizePos;
-                int datePos;
-                int descPos;
-                char sepChar = fieldLocs[4].ToCharArray()[0];
-
-                if (int.TryParse(fieldLocs[0], out filePos)) {
-                    filePos--;  // because we count from zero...
-                } else {
-                    pError($"Filename position given ({fieldLocs[0]}) is invalid.");
-                    return;
-                }
-                if (int.TryParse(fieldLocs[1], out sizePos)) {
-                    sizePos--;  // because we count from zero...
-                } else {
-                    pError($"File size position given ({fieldLocs[1]}) is invalid.");
-                    return;
-                }
-                if (int.TryParse(fieldLocs[2], out datePos)) {
-                    datePos--;  // because we count from zero...
-                } else {
-                    pError($"File date position given ({fieldLocs[2]}) is invalid.");
-                    return;
-                }
-                if (int.TryParse(fieldLocs[3], out descPos)) {
-                    descPos--;  // because we count from zero...
-                } else {
-                    pError($"File description position given ({fieldLocs[3]}) is invalid.");
-                    return;
-                }
-
-
+                int filePos = 0;
+                int sizePos = 0;
+                int datePos = 0;
+                int descPos = 0;
+                char sepChar = ' ';
 
                 string checkName;
                 string holdFile = "";
@@ -144,12 +108,36 @@ namespace process_file_desc {
                 string fileDate;
                 string fileDesc;
                 long totalSize = 0L;
+                int lineCount = 0;
 
                 while (!descReader.EndOfStream) {
                     workLine = descReader.ReadLine();
-                    //                            Some files.bbs and other file listings may have
-                    //                            "non descriptive" text that leads with a space,
-                    //                            and is typically something we need to ignore.
+                    lineCount++;
+                    if ((lineCount == 1 || workLine.Equals(" --")) && workLine.Contains(",")) {
+                        fieldLocs = workLine.Split(',');
+
+                        if (!ParseColumnFields(fieldLocs, out filePos, out sizePos, out datePos, out descPos, out sepChar))
+                            return;
+                                                
+                        if (lineCount == 1) {
+                            shortDescription = descReader.ReadLine();
+                            longDescription = descReader.ReadLine();
+                            lineCount += 1;
+                            EmitHeader(shortDescription, longDescription);
+                        } else {
+                            // we got a tear line, so we need to pull new column defs.
+                            string tempStr = descReader.ReadLine();
+                            fieldLocs = tempStr.Split(',');
+                            if (!ParseColumnFields(fieldLocs, out filePos, out sizePos, out datePos, out descPos,
+                                out sepChar))
+                                return;
+                        }
+                    }
+                    //
+                    // Some files.bbs and other file listings may have
+                    // "non descriptive" text that leads with a space,
+                    // and is typically something we need to ignore.
+                    //
                     if (workLine.Trim().Equals("") || workLine.Substring(0, 1).Equals(" "))
                         continue;
                     
@@ -240,6 +228,47 @@ namespace process_file_desc {
                 Console.WriteLine("</body>");
                 Console.WriteLine("</html>");
             }
+        }
+
+        private static bool ParseColumnFields(string[] fieldLocs,
+            out int filePos, out int sizePos, out int datePos, out int descPos,
+            out char sepChar) {
+            bool hasError = false;
+            if (int.TryParse(fieldLocs[0], out filePos)) {
+                filePos--;  // because we count from zero and meatbags don't.
+            } else {
+                pError($"Filename position given ({fieldLocs[0]}) is invalid.");
+                hasError = true;
+            }
+            if (int.TryParse(fieldLocs[1], out sizePos)) {
+                sizePos--;  
+            } else {
+                pError($"File size position given ({fieldLocs[1]}) is invalid.");
+                hasError = true;
+            }
+            if (int.TryParse(fieldLocs[2], out datePos)) {
+                datePos--;
+            } else {
+                pError($"File date position given ({fieldLocs[2]}) is invalid.");
+                hasError = true;
+            }
+            if (int.TryParse(fieldLocs[3], out descPos)) {
+                descPos--;
+            } else {
+                pError($"File description position given ({fieldLocs[3]}) is invalid.");
+                hasError = true;
+            }
+            if (hasError) {
+                filePos = -1;
+                sizePos = -1;
+                datePos = -1;
+                descPos = -1;
+                sepChar = ' ';
+                return false;
+            }
+            sepChar = fieldLocs[4].ToCharArray()[0];
+            return true;
+
         }
     }
 }
